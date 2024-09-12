@@ -1,51 +1,31 @@
-Create Database bankmanagement;
+-- Create the database
+CREATE DATABASE IF NOT EXISTS bankmanagement;
 
-use bankmanagement;
+-- Use the newly created database
+USE bankmanagement;
 
-CREATE TABLE users (
-    account_no INTEGER NOT NULL AUTO_INCREMENT,
-    name       VARCHAR (50),
-    phoneno    CHAR (10),
-    address    TEXT,
-    balance    INTEGER,
-    email VARCHAR(128),
-    password VARCHAR(128),
-    PRIMARY KEY CLUSTERED (account_no)
+-- Create table for storing user information
+CREATE TABLE IF NOT EXISTS users (
+    account_no INT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    phoneno VARCHAR(20) NOT NULL,
+    address TEXT NOT NULL,
+    balance INT DEFAULT 0,
+    email VARCHAR(255) UNIQUE NOT NULL,
+    password VARCHAR(255) NOT NULL,
+    pin INT
 );
 
-
-CREATE TABLE transfer (
-    sno INTEGER NOT NULL AUTO_INCREMENT,
-    date       VARCHAR (100),
-    account_no INTEGER,
-    balance    INTEGER,
-    transamt INTEGER,
-    to_acc_no INTEGER,
-    PRIMARY KEY CLUSTERED (sno)
+-- Create table for storing transaction records
+CREATE TABLE IF NOT EXISTS transfer (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    date DATETIME NOT NULL,
+    account_no INT NOT NULL,
+    balance INT NOT NULL,
+    transamt INT NOT NULL,
+    to_acc_no INT NOT NULL,
+    FOREIGN KEY (account_no) REFERENCES users(account_no),
+    FOREIGN KEY (to_acc_no) REFERENCES users(account_no)
 );
 
-CREATE TABLE deposit (
-    sno INTEGER NOT NULL AUTO_INCREMENT,
-    date       VARCHAR (100),
-    account_no INTEGER,
-    balance    INTEGER,
-    transamt INTEGER,
-    PRIMARY KEY CLUSTERED (sno)
-);
-
-CREATE TABLE withdraw (
-    sno INTEGER NOT NULL AUTO_INCREMENT,
-    date      VARCHAR (100),
-    account_no INTEGER,
-    balance    INTEGER,
-    transamt INTEGER,
-    PRIMARY KEY CLUSTERED (sno)
-);
-
-CREATE TABLE mpin (
-num INTEGER NOT NULL AUTO_INCREMENT,
-pin INTEGER,
-account_no INTEGER,
-PRIMARY KEY CLUSTERED (num)
-);
 
