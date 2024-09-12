@@ -1,10 +1,10 @@
-std::mutex mtx; // Mutex to protect shared resources
-const char encryption_key = 'K'; // Example key for XOR encryption
+std::mutex db_mutex;
 
-std::string encrypt_decrypt(const std::string& input, char key) {
-    std::string output = input;
-    for (char& c : output) {
-        c ^= key;
+// Simple XOR-based encryption/decryption
+std::string encryptDecrypt(const std::string& data, char key = 'K') {
+    std::string output = data;
+    for (size_t i = 0; i < data.length(); ++i) {
+        output[i] = data[i] ^ key;
     }
     return output;
 }
