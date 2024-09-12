@@ -1,0 +1,416 @@
+#include <iostream>
+#include <stdio.h>
+#include <windows.h>
+#include <mysql.h>
+#include <sstream>
+#include <string>
+#include <cstring>
+#include <algorithm>
+#include <thread>
+#include <mutex>
+
+using namespace std;
+
+// Mutex for synchronizing database access
+std::mutex db_mutex;
+
+// Simple XOR-based encryption/decryption
+std::string encryptDecrypt(const std::string& data, char key = 'K') {
+    std::string output = data;
+    for (size_t i = 0; i < data.length(); ++i) {
+        output[i] = data[i] ^ key;
+    }
+    return output;
+}
+
+int account_generator(MYSQL* conn, const string& email) {
+    stringstream ss;
+    MYSQL_ROW row;
+    MYSQL_RES* res;
+    int qstate;
+    ss << "SELECT account_no,email FROM users";
+    string query = ss.str();
+    const char* q = query.c_str();
+    qstate = mysql_query(conn, q);
+    if (qstate == 0) {
+        res = mysql_store_result(conn);
+        while ((row = mysql_fetch_row(res))) {
+            if (email == row[1]) {
+                return atoi(row[0]);
+            }
+        }
+    }
+    return 0;
+}
+
+int account_validator(MYSQL* conn, int acc) {
+    stringstream ss;
+    MYSQL_RES* res;
+    MYSQL_ROW row;
+    int acc_num;
+
+    ss << "SELECT account_no FROM users";
+    string query = ss.str();
+    const char* q = query.c_str();
+    int qstate = mysql_query(conn, q);
+    if (qstate == 0) {
+        res = mysql_store_result(conn);
+        while ((row = mysql_fetch_row(res))) {
+            acc_num = atoi(row[0]);
+            if (acc_num == acc) {
+                return 1;
+            }
+        }
+    } else {
+        cout << "Query error: " << mysql_error(conn) << endl;
+    }
+    return 0;
+}
+
+int bal_validate(MYSQL* conn, int acc_no, int amount) {
+    stringstream ss;
+    MYSQL_RES* res;
+    MYSQL_ROW row;
+    int balance = 0;
+
+    ss << "SELECT balance FROM users WHERE account_no = " << acc_no;
+    string query = ss.str();
+    const char* q = query.c_str();
+    int qstate = mysql_query(conn, q);
+    if (qstate == 0) {
+        res = mysql_store_result(conn);
+        if ((row = mysql_fetch_row(res))) {
+            balance = atoi(row[0]);
+            if (balance < amount) {
+                return 2; // Insufficient balance
+            }
+        }
+    } else {
+        cout << "Query error: " << mysql_error(conn) << endl;
+    }
+    return 1; // Balance is sufficient
+}
+
+void deposit_money(MYSQL* conn, int acc_no) {
+    int deposit_amt;
+    stringstream ss, ss1;
+    MYSQL_RES* res;
+    MYSQL_ROW row;
+    int qstate = 0;
+
+    cout << "Enter Amount to Deposit: ";
+    cin >> deposit_amt;
+    if (deposit_amt <= 0) {
+        cout << "Invalid deposit amount" << endl;
+        return;
+    }
+
+    lock_guard<mutex> guard(db_mutex); // Lock for thread safety
+
+    ss << "SELECT balance FROM users WHERE account_no = " << acc_no;
+    string query = ss.str();
+    const char* q = query.c_str();
+    qstate = mysql_query(conn, q);
+    if (qstate == 0) {
+        res = mysql_store_result(conn);
+        if ((row = mysql_fetch_row(res))) {
+            int current_balance = atoi(row[0]);
+            int new_balance = current_balance + deposit_amt;
+
+            ss1 << "UPDATE users SET balance = " << new_balance << " WHERE account_no = " << acc_no;
+            string query1 = ss1.str();
+            const char* q1 = query1.c_str();
+            qstate = mysql_query(conn, q1);
+            if (qstate == 0) {
+                cout << "Amount of Rupees " << deposit_amt << " Deposited Successfully. New Balance: " << new_balance << endl;
+            } else {
+                cout << "Deposit Error: " << mysql_error(conn) << endl;
+            }
+        }
+    } else {
+        cout << "Query Error: " << mysql_error(conn) << endl;
+    }
+}
+
+void withdraw_money(MYSQL* conn, int acc_no) {
+    int withdraw_amt;
+    stringstream ss, ss1;
+    MYSQL_RES* res;
+    MYSQL_ROW row;
+    int qstate = 0;
+
+    cout << "Enter Amount to Withdraw: ";
+    cin >> withdraw_amt;
+    if (withdraw_amt <= 0) {
+        cout << "Invalid withdrawal amount" << endl;
+        return;
+    }
+
+    if (bal_validate(conn, acc_no, withdraw_amt) == 2) {
+        cout << "Insufficient Balance" << endl;
+        return;
+    }
+
+    lock_guard<mutex> guard(db_mutex); // Lock for thread safety
+
+    ss << "SELECT balance FROM users WHERE account_no = " << acc_no;
+    string query = ss.str();
+    const char* q = query.c_str();
+    qstate = mysql_query(conn, q);
+    if (qstate == 0) {
+        res = mysql_store_result(conn);
+        if ((row = mysql_fetch_row(res))) {
+            int current_balance = atoi(row[0]);
+            int new_balance = current_balance - withdraw_amt;
+
+            ss1 << "UPDATE users SET balance = " << new_balance << " WHERE account_no = " << acc_no;
+            string query1 = ss1.str();
+            const char* q1 = query1.c_str();
+            qstate = mysql_query(conn, q1);
+            if (qstate == 0) {
+                cout << "Amount of Rupees " << withdraw_amt << " Withdrawn Successfully. New Balance: " << new_balance << endl;
+            } else {
+                cout << "Withdrawal Error: " << mysql_error(conn) << endl;
+            }
+        }
+    } else {
+        cout << "Query Error: " << mysql_error(conn) << endl;
+    }
+}
+
+void show_transactions(MYSQL* conn, int acc_no) {
+    stringstream ss;
+    MYSQL_RES* res;
+    MYSQL_ROW row;
+    int qstate = 0;
+
+    ss << "SELECT date, account_no, balance, transamt, to_acc_no FROM transfer WHERE account_no = " << acc_no;
+    string query = ss.str();
+    const char* q = query.c_str();
+    qstate = mysql_query(conn, q);
+    if (qstate == 0) {
+        res = mysql_store_result(conn);
+        while ((row = mysql_fetch_row(res))) {
+            cout << "Date: " << row[0] << ", Account No: " << row[1] << ", Balance: " << row[2]
+                 << ", Transfer Amount: " << row[3] << ", To Account No: " << row[4] << endl;
+        }
+    } else {
+        cout << "Query Error: " << mysql_error(conn) << endl;
+    }
+}
+
+void generate_pin(MYSQL* conn, int acc_no) {
+    int pin;
+    stringstream ss, ss1;
+    MYSQL_RES* res;
+    MYSQL_ROW row;
+    int qstate = 0;
+
+    cout << "Enter new PIN: ";
+    cin >> pin;
+    if (pin < 1000 || pin > 9999) {
+        cout << "Invalid PIN. PIN should be a 4-digit number." << endl;
+        return;
+    }
+
+    lock_guard<mutex> guard(db_mutex); // Lock for thread safety
+
+    ss << "SELECT account_no FROM users WHERE account_no = " << acc_no;
+    string query = ss.str();
+    const char* q = query.c_str();
+    qstate = mysql_query(conn, q);
+    if (qstate == 0) {
+        res = mysql_store_result(conn);
+        if ((row = mysql_fetch_row(res))) {
+            ss1 << "UPDATE users SET pin = " << pin << " WHERE account_no = " << acc_no;
+            string query1 = ss1.str();
+            const char* q1 = query1.c_str();
+            qstate = mysql_query(conn, q1);
+            if (qstate == 0) {
+                cout << "PIN updated successfully." << endl;
+            } else {
+                cout << "PIN Update Error: " << mysql_error(conn) << endl;
+            }
+        } else {
+            cout << "Account Number does not exist." << endl;
+        }
+    } else {
+        cout << "Query Error: " << mysql_error(conn) << endl;
+    }
+}
+
+void search_user(MYSQL* conn, const string& search_term) {
+    stringstream ss;
+    MYSQL_RES* res;
+    MYSQL_ROW row;
+    int qstate = 0;
+
+    ss << "SELECT account_no, name, phoneno, address, balance, email FROM users WHERE name LIKE '%" << search_term << "%' OR email LIKE '%" << search_term << "%'";
+    string query = ss.str();
+    const char* q = query.c_str();
+    qstate = mysql_query(conn, q);
+    if (qstate == 0) {
+        res = mysql_store_result(conn);
+        while ((row = mysql_fetch_row(res))) {
+            cout << "Account No: " << row[0] << ", Name: " << row[1] << ", Phone No: " << row[2]
+                 << ", Address: " << row[3] << ", Balance: " << row[4] << ", Email: " << encryptDecrypt(row[5]) << endl;
+        }
+    } else {
+        cout << "Query Error: " << mysql_error(conn) << endl;
+    }
+}
+
+void edit_user(MYSQL* conn, int acc_no) {
+    string name, phoneno, address;
+    int balance;
+    stringstream ss, ss1;
+    MYSQL_RES* res;
+    MYSQL_ROW row;
+    int qstate = 0;
+
+    cout << "Enter new Name: ";
+    cin.ignore();
+    getline(cin, name);
+
+    cout << "Enter new Phone No: ";
+    cin >> phoneno;
+
+    cout << "Enter new Address: ";
+    cin.ignore();
+    getline(cin, address);
+
+    cout << "Enter new Balance: ";
+    cin >> balance;
+
+    lock_guard<mutex> guard(db_mutex); // Lock for thread safety
+
+    ss << "SELECT account_no FROM users WHERE account_no = " << acc_no;
+    string query = ss.str();
+    const char* q = query.c_str();
+    qstate = mysql_query(conn, q);
+    if (qstate == 0) {
+        res = mysql_store_result(conn);
+        if ((row = mysql_fetch_row(res))) {
+            ss1 << "UPDATE users SET name = '" << name << "', phoneno = '" << phoneno << "', address = '"
+                << address << "', balance = " << balance << " WHERE account_no = " << acc_no;
+            string query1 = ss1.str();
+            const char* q1 = query1.c_str();
+            qstate = mysql_query(conn, q1);
+            if (qstate == 0) {
+                cout << "User record updated successfully." << endl;
+            } else {
+                cout << "Update Error: " << mysql_error(conn) << endl;
+            }
+        } else {
+            cout << "Account Number does not exist." << endl;
+        }
+    } else {
+        cout << "Query Error: " << mysql_error(conn) << endl;
+    }
+}
+
+// Main function
+int main() {
+    MYSQL* conn;
+    conn = mysql_init(0);
+    conn = mysql_real_connect(conn, "localhost", "root", "", "bankmanagement", 3306, NULL, 0);
+
+    if (conn) {
+        char ch;
+        int acc_no = 0;
+
+        system("Color E0");
+        cout << "\t\t\t==================================================================" << endl;
+        cout << "\t\t\t                        WELCOME TO BANK                           " << endl;
+        cout << "\t\t\t==================================================================" << endl;
+
+        do {
+            cout << "Enter\n\n1. Create Account\n2. Deposit Money\n3. Withdraw Money\n4. Transfer Money\n5. Show Transactions\n6. Generate/Update PIN\n7. Search User\n8. Edit User\n9. Exit\n";
+            cin >> ch;
+
+            switch (ch) {
+                case '1':
+                    createaccount(conn);
+                    break;
+                case '2':
+                    cout << "Enter Account Number: ";
+                    cin >> acc_no;
+                    if (account_validator(conn, acc_no)) {
+                        handle_transaction(conn, acc_no, deposit_money);
+                    } else {
+                        cout << "Invalid Account Number" << endl;
+                    }
+                    break;
+                case '3':
+                    cout << "Enter Account Number: ";
+                    cin >> acc_no;
+                    if (account_validator(conn, acc_no)) {
+                        handle_transaction(conn, acc_no, withdraw_money);
+                    } else {
+                        cout << "Invalid Account Number" << endl;
+                    }
+                    break;
+                case '4':
+                    cout << "Enter Account Number: ";
+                    cin >> acc_no;
+                    if (account_validator(conn, acc_no)) {
+                        // Create a new thread for handling transactions
+                        thread t(handle_transaction, conn, acc_no, transfer_money);
+                        t.join(); // Wait for the thread to finish
+                    } else {
+                        cout << "Invalid Account Number" << endl;
+                    }
+                    break;
+                case '5':
+                    cout << "Enter Account Number: ";
+                    cin >> acc_no;
+                    if (account_validator(conn, acc_no)) {
+                        show_transactions(conn, acc_no);
+                    } else {
+                        cout << "Invalid Account Number" << endl;
+                    }
+                    break;
+                case '6':
+                    cout << "Enter Account Number: ";
+                    cin >> acc_no;
+                    if (account_validator(conn, acc_no)) {
+                        generate_pin(conn, acc_no);
+                    } else {
+                        cout << "Invalid Account Number" << endl;
+                    }
+                    break;
+                case '7':
+                    {
+                        string search_term;
+                        cout << "Enter name or email to search: ";
+                        cin.ignore();
+                        getline(cin, search_term);
+                        search_user(conn, search_term);
+                    }
+                    break;
+                case '8':
+                    cout << "Enter Account Number: ";
+                    cin >> acc_no;
+                    if (account_validator(conn, acc_no)) {
+                        edit_user(conn, acc_no);
+                    } else {
+                        cout << "Invalid Account Number" << endl;
+                    }
+                    break;
+                case '9':
+                    mysql_close(conn);
+                    return 0;
+                default:
+                    cout << "Invalid Option" << endl;
+            }
+        } while (ch != '9');
+    } else {
+        cout << "Connection Error: " << mysql_error(conn) << endl;
+    }
+
+    mysql_close(conn);
+    return 0;
+}
+
+
+
