@@ -48,3 +48,4 @@ pin INTEGER,
 account_no INTEGER,
 PRIMARY KEY CLUSTERED (num)
 );
+
