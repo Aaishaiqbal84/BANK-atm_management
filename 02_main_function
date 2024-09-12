@@ -1,7 +1,10 @@
 #include <iostream>
-#include <thread>
-#include <mutex>
+#include <stdio.h>
+#include <windows.h>
 #include <mysql.h>
 #include <sstream>
 #include <string>
-#include <ctime>
+#include <cstring>
+#include <algorithm>
+#include <thread>
+#include <mutex>
