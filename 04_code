@@ -15,7 +15,6 @@ mutex mtx;
 
 // Function to encrypt a PIN
 string encrypt_pin(const string &pin) {
-    // Simple XOR encryption (for demonstration purposes)
     string key = "simplekey";  // In real applications, use a stronger key
     string encrypted_pin(pin.size(), '\0');
     for (size_t i = 0; i < pin.size(); ++i) {
@@ -37,7 +36,6 @@ string generate_random_key(size_t length) {
 }
 
 int account_generator(MYSQL* conn, const string &email) {
-    lock_guard<mutex> lock(mtx);
     stringstream ss;
     MYSQL_ROW row;
     MYSQL_RES* res;
@@ -58,7 +56,6 @@ int account_generator(MYSQL* conn, const string &email) {
 }
 
 int account_validator(MYSQL* conn, int acc) {
-    lock_guard<mutex> lock(mtx);
     stringstream ss;
     MYSQL_RES* res;
     MYSQL_ROW row;
@@ -74,13 +71,15 @@ int account_validator(MYSQL* conn, int acc) {
                 return 1;
             }
         }
+        return 0;
+    } else {
+        cout << "Account validator query error: " << mysql_error(conn) << endl;
+        return 0;
     }
-    return 0;
 }
 
 // Function to create an account
 void createaccount(MYSQL* conn) {
-    lock_guard<mutex> lock(mtx);
     stringstream ss;
     string name, address, email, password;
     char phone[20];
@@ -116,7 +115,6 @@ void createaccount(MYSQL* conn) {
 }
 
 int loginaccount(MYSQL* conn, const string &email, const string &password) {
-    lock_guard<mutex> lock(mtx);
     stringstream ss;
     MYSQL_ROW row;
     MYSQL_RES* res;
@@ -141,7 +139,6 @@ int loginaccount(MYSQL* conn, const string &email, const string &password) {
 }
 
 void display_details(MYSQL* conn, int acc) {
-    lock_guard<mutex> lock(mtx);
     stringstream ss;
     MYSQL_ROW row;
     MYSQL_RES* res;
@@ -165,7 +162,6 @@ void display_details(MYSQL* conn, int acc) {
 }
 
 int pin_generate(MYSQL* conn, int acc, const string &pin) {
-    lock_guard<mutex> lock(mtx);
     stringstream ss;
     MYSQL_ROW row;
     MYSQL_RES* res;
@@ -194,7 +190,6 @@ int pin_generate(MYSQL* conn, int acc, const string &pin) {
 }
 
 int create_pin(MYSQL* conn, int acc) {
-    lock_guard<mutex> lock(mtx);
     stringstream ss;
     int pin;
     cout << "Enter a 4 digit pin: ";
@@ -222,7 +217,6 @@ int create_pin(MYSQL* conn, int acc) {
 }
 
 int bal_validate(MYSQL* conn, int acc, int transfer) {
-    lock_guard<mutex> lock(mtx);
     stringstream ss;
     MYSQL_ROW row;
     MYSQL_RES* res;
@@ -247,7 +241,7 @@ int bal_validate(MYSQL* conn, int acc, int transfer) {
 }
 
 void transfer_money(MYSQL* conn, int acc) {
-    lock_guard<mutex> lock(mtx);
+    lock_guard<mutex> lock(mtx);  // Ensure thread safety for database write
     stringstream ss, ss1, ss2;
     int transfer, to;
     cout << "Enter Amount to Transfer: ";
@@ -259,116 +253,3 @@ void transfer_money(MYSQL* conn, int acc) {
         string query1 = ss1.str();
         const char* q1 = query1.c_str();
         if (mysql_query(conn, q1) == 0) {
-            ss2 << "UPDATE users SET balance = balance + " << transfer << " WHERE account_no = " << to;
-            string query2 = ss2.str();
-            const char* q2 = query2.c_str();
-            if (mysql_query(conn, q2) == 0) {
-                cout << "Amount Transferred Successfully" << endl;
-            } else {
-                cout << "Error updating recipient balance: " << mysql_error(conn) << endl;
-            }
-        } else {
-            cout << "Error updating sender balance: " << mysql_error(conn) << endl;
-        }
-    } else {
-        cout << "Insufficient balance" << endl;
-    }
-}
-
-void withdraw(MYSQL* conn, int acc) {
-    lock_guard<mutex> lock(mtx);
-    stringstream ss;
-    int withdraw_amount;
-    cout << "Enter amount to withdraw: ";
-    cin >> withdraw_amount;
-    if (bal_validate(conn, acc, withdraw_amount) == 1) {
-        ss << "UPDATE users SET balance = balance - " << withdraw_amount << " WHERE account_no = " << acc;
-        string query = ss.str();
-        const char* q = query.c_str();
-        if (mysql_query(conn, q) == 0) {
-            cout << "Amount withdrawn successfully" << endl;
-        } else {
-            cout << "Error withdrawing amount: " << mysql_error(conn) << endl;
-        }
-    } else {
-        cout << "Insufficient balance" << endl;
-    }
-}
-
-void deposit(MYSQL* conn, int acc) {
-    lock_guard<mutex> lock(mtx);
-    stringstream ss;
-    int deposit_amount;
-    cout << "Enter amount to deposit: ";
-    cin >> deposit_amount;
-    ss << "UPDATE users SET balance = balance + " << deposit_amount << " WHERE account_no = " << acc;
-    string query = ss.str();
-    const char* q = query.c_str();
-    if (mysql_query(conn, q) == 0) {
-        cout << "Amount deposited successfully" << endl;
-    } else {
-        cout << "Error depositing amount: " << mysql_error(conn) << endl;
-    }
-}
-
-int main() {
-    // Initialize MySQL connection (add proper error handling in real application)
-    MYSQL* conn;
-    conn = mysql_init(0);
-    conn = mysql_real_connect(conn, "localhost", "user", "password", "bank_db", 0, NULL, 0);
-    if (!conn) {
-        cout << "Database connection failed: " << mysql_error(conn) << endl;
-        return 1;
-    }
-
-    // Example usage
-    int choice, acc;
-    string email, password;
-    cout << "1. Create Account\n2. Login\n3. Exit\n";
-    cin >> choice;
-    switch (choice) {
-        case 1:
-            createaccount(conn);
-            break;
-        case 2:
-            cout << "Enter Email: ";
-            cin >> email;
-            cout << "Enter Password: ";
-            cin >> password;
-            acc = loginaccount(conn, email, password);
-            if (acc) {
-                // Account-specific operations
-                int op;
-                cout << "1. Create PIN\n2. Transfer Money\n3. Withdraw\n4. Deposit\n5. Exit\n";
-                cin >> op;
-                switch (op) {
-                    case 1:
-                        create_pin(conn, acc);
-                        break;
-                    case 2:
-                        transfer_money(conn, acc);
-                        break;
-                    case 3:
-                        withdraw(conn, acc);
-                        break;
-                    case 4:
-                        deposit(conn, acc);
-                        break;
-                    case 5:
-                        mysql_close(conn);
-                        return 0;
-                }
-            }
-            break;
-        case 3:
-            mysql_close(conn);
-            return 0;
-    }
-
-    mysql_close(conn);
-    return 0;
-}
-
-
-
-
